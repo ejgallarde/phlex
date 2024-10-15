@@ -12,6 +12,7 @@ from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lex_rank import LexRankSummarizer
 
+import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.tokenize import word_tokenize
@@ -20,19 +21,22 @@ import requests
 from bs4 import BeautifulSoup
 
 # Ensure that the necessary NLTK data is available
-# nltk.download('punkt')
-# nltk.download('punkt_tab')
-# nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('punkt_tab')
+nltk.download('stopwords')
 
 # CONSTANTS
 # The embedding model to use (vector size 1,536)
 ENGINE = 'text-embedding-3-small'
 # Define constants for the Pinecone index and namespace
-INDEX_NAME = st.secrets["INDEX_NAME"]  # The name of the original Pinecone index
+# The name of the original Pinecone index
+INDEX_NAME = st.secrets["INDEX_NAME"]
 NAMESPACE = st.secrets["NAMESPACE"]  # The namespace to use within the index
 
 print("Loading functions and classes...")
 # FUNCTIONS
+
+
 def extract_text_data(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -50,7 +54,6 @@ def extract_text_data(url):
         return filtered_text
     else:
         return ""
-
 
 
 def summarize_texts(texts, num_sentences=80):
@@ -102,10 +105,11 @@ def query_from_pinecone(query, top_k=3, include_metadata=True):
     query_embedding = get_embedding(query, engine=ENGINE)
 
     return index.query(
-      vector=query_embedding,
-      top_k=top_k,
-      namespace=NAMESPACE,
-      include_metadata=include_metadata   # gets the metadata (dates, text, etc)
+        vector=query_embedding,
+        top_k=top_k,
+        namespace=NAMESPACE,
+        # gets the metadata (dates, text, etc)
+        include_metadata=include_metadata
     ).get('matches')
 
 
@@ -141,7 +145,8 @@ class OpenAIChatLLM(BaseModel):
 
         # Return the generated response content
         return response.choices[0].message.content
-    
+
+
 FINAL_ANSWER_TOKEN = "Legal Assistant Response:"
 STOP = '[END]'
 PROMPT_TEMPLATE = """Today is {today} and you can retrieve information from a database. Respond to the user's input as best as you can.
@@ -208,20 +213,21 @@ class RagBot(BaseModel):
         if len(query.split()) < 5:  # Adjust threshold as needed
             return f"Provide a detailed explanation of: {query}. Include its legal provisions, history, and key implications."
         return query
-        
+
     def run(self, question: str):
         expanded_question = self.expand_query(question)
         self.user_inputs.append(expanded_question)
         top_response = self.query_from_pinecone(expanded_question)[0]
         print(top_response['score'])
         if top_response['score'] >= self.threshold:
-            self.contexts.append((extract_text_data(top_response['metadata']['url']), top_response['metadata']['url'], top_response['score']))
+            self.contexts.append((extract_text_data(
+                top_response['metadata']['url']), top_response['metadata']['url'], top_response['score']))
         else:
             self.contexts.append(('NO CONTEXT FOUND', 'NONE', 0))
 
         prompt = self.prompt_template.format(
-                today=datetime.now(),
-                running_convo=self.running_convo
+            today=datetime.now(),
+            running_convo=self.running_convo
         )
         if self.verbose:
             print('--------')
@@ -244,10 +250,9 @@ class RagBot(BaseModel):
         if FINAL_ANSWER_TOKEN in generated:
             generated = generated.split(FINAL_ANSWER_TOKEN)[-1]
         return generated
-    
+
 
 print("Initializing Program")
-
 
 
 # Initialize the OpenAI client with the API key from secrets
